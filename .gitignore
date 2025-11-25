@@ -1,0 +1,27 @@
+Môi trường ảo (TUYỆT ĐỐI KHÔNG ĐƯA LÊN)
+
+venv/
+.venv/
+
+File dữ liệu nặng (Cần được tải từ Cloud khi triển khai)
+
+*.parquet
+*.csv
+*.xlsx
+anime_dataset_small_nomic.parquet
+
+Cache và Metadata
+
+pycache/
+.streamlit/
+.ipynb_checkpoints
+.DS_Store
+
+Cache của Streamlit và thư viện Machine Learning
+
+.cache/
+.st-runtime/
+
+Cache của mô hình Hugging Face (nơi các mô hình được lưu)
+
+.huggingface/

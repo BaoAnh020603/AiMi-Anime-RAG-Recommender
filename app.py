@@ -6,35 +6,24 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import time
 import os
-import gdown # Cần thư viện này để tải file từ Google Drive
+import gdown 
 
-# TÊN FILE VÀ FILE ID
+# CẤU HÌNH DATA VÀ MODEL (ID GOOGLE DRIVE CỦA BẠN ĐÃ ĐƯỢC DÁN VÀO ĐÂY)
 DATA_FILE = 'anime_dataset_small_nomic.parquet'
-# !! QUAN TRỌNG: BẠN PHẢI THAY THẾ ID NÀY BẰNG ID FILE CỦA BẠN TỪ GOOGLE DRIVE !!
 DATA_FILE_ID = '16bdNhA2DCgRevE3ZtaQIIym_lSRYVqQO' 
 MODEL_NAME = 'nomic-ai/nomic-embed-text-v1.5'
 
-# --- HÀM TẢI FILE NẶNG (SỬ DỤNG CACHE) ---
+# --- 1. Tải Dữ liệu, Tạo Index và Model (Chỉ chạy 1 lần) ---
 @st.cache_resource
 def load_data_and_initialize_rag():
-    st.info(f"Bắt đầu: Tải và Khởi tạo Hệ thống RAG...")
-    
     # 1. TẢI FILE DỮ LIỆU TỪ GOOGLE DRIVE NẾU CHƯA TỒN TẠI
     if not os.path.exists(DATA_FILE):
-        if DATA_FILE_ID == 'https://drive.google.com/file/d/16bdNhA2DCgRevE3ZtaQIIym_lSRYVqQO/view?usp=sharing':
-            st.error("LỖI TRIỂN KHAI: Bạn chưa thay thế DATA_FILE_ID bằng ID file Google Drive của mình.")
-            return None, None, None
-            
-        st.info(f"Đang tải file data lớn từ Google Drive (ID: {DATA_FILE_ID})...")
         try:
             # Gdown sẽ tải file và lưu với tên DATA_FILE
-            gdown.download(id=DATA_FILE_ID, output=DATA_FILE, quiet=False, fuzzy=True)
-            st.success("Tải file data thành công!")
+            gdown.download(id=DATA_FILE_ID, output=DATA_FILE, quiet=True, fuzzy=True)
         except Exception as e:
-            st.error(f"LỖI TẢI FILE: Không thể tải file từ Google Drive. Đảm bảo ID và quyền chia sẻ công khai là đúng. Lỗi: {e}")
+            st.error(f"LỖI TẢI DATA: Không thể tải file từ Google Drive. Vui lòng kiểm tra ID và quyền chia sẻ. Lỗi: {e}")
             return None, None, None
-    else:
-        st.info("File data đã tồn tại, tiến hành đọc file.")
     
     # 2. ĐỌC DỮ LIỆU
     try:
@@ -44,7 +33,6 @@ def load_data_and_initialize_rag():
         return None, None, None
 
     # 3. TẠO TRƯỜNG CONTEXT RAG
-    st.info("Bước 1: Tạo trường 'rag_context'...")
     try:
         df['rag_context'] = (
             "Title: " + df['Main Title'].fillna('Unknown Title') + " | " +
@@ -53,11 +41,10 @@ def load_data_and_initialize_rag():
             "Synopsis: " + df['Synopsis'].fillna('No synopsis provided')
         )
     except KeyError as e:
-        st.error(f"LỖỖI KEY: Cột {e} không tồn tại. Vui lòng kiểm tra lại chính tả tên cột.")
+        st.error(f"LỖI KEY: Cột {e} không tồn tại. Vui lòng kiểm tra lại chính tả tên cột.")
         return None, None, None
 
     # 4. Tải Mô hình Embedding 
-    st.info(f"Bước 2: Tải mô hình Embedding: {MODEL_NAME}...")
     try:
         model = SentenceTransformer(MODEL_NAME, trust_remote_code=True)
     except Exception as e:
@@ -65,9 +52,7 @@ def load_data_and_initialize_rag():
         return None, None, None
     
     # 5. Tạo Embeddings và Index FAISS
-    st.info("Bước 3: Tạo Embeddings và Index FAISS...")
     embedding_texts = df['rag_context'].tolist()
-    
     embeddings = model.encode(embedding_texts, show_progress_bar=False)
     
     # Tạo Index FAISS
@@ -75,70 +60,92 @@ def load_data_and_initialize_rag():
     index = faiss.IndexFlatL2(dimension)
     index.add(np.array(embeddings).astype('float32'))
     
-    st.success(f"Khởi tạo RAG thành công! Tổng số entries: {len(df)}")
     return df, model, index
 
 # --- 2. Hàm Tìm kiếm Ngữ nghĩa ---
 def semantic_search(query: str, df: pd.DataFrame, model: SentenceTransformer, index: faiss.Index, k: int = 5):
     """Thực hiện tìm kiếm vector và trả về các anime phù hợp nhất."""
     
-    # 2.1. Embed Query
     query_embedding = model.encode([query]) 
-    
-    # 2.2. Tìm kiếm trong Index FAISS
     distances, indices = index.search(np.array(query_embedding).astype('float32'), k)
     
-    # 2.3. Lấy kết quả từ DataFrame gốc
     results = df.iloc[indices[0]].copy()
-    
-    # Thêm khoảng cách L2 vào kết quả
     results['Distance'] = distances[0]
     
     return results.sort_values(by='Distance', ascending=True)
 
 # --- 3. Giao diện Streamlit ---
 
-st.title("🤖 Anime Recommender RAG (Public)") # Đổi tên cho bản Public
+# Cấu hình trang (chế độ Wide)
+st.set_page_config(
+    page_title="AiMi Anime Recommender",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
-# Khởi tạo hệ thống
-df, model, index = load_data_and_initialize_rag()
+# Tiêu đề chính
+st.markdown("<h1 style='text-align: center; color: #FF69B4;'>💖 AiMi Anime Recommender 🤖</h1>", unsafe_allow_html=True)
+st.markdown("<h4 style='text-align: center; color: #808080;'>Tìm kiếm Anime bằng ngôn ngữ tự nhiên sử dụng Vector AI</h4>", unsafe_allow_html=True)
+
+
+# Sử dụng st.spinner để ẩn các bước kỹ thuật
+with st.spinner("🚀 Đang khởi động hệ thống Đề xuất AI... (Lần đầu sẽ mất vài phút)"):
+    df, model, index = load_data_and_initialize_rag()
 
 if df is not None:
-    st.subheader("Hoàn tất Khởi tạo. Bây giờ bạn có thể tìm kiếm.")
+    st.success("✅ Hệ thống đã sẵn sàng! Chào mừng bạn đến với thế giới Anime.")
+    st.markdown("---")
     
-    # Thanh tìm kiếm
-    user_query = st.text_input(
-        "Nhập truy vấn bằng ngôn ngữ tự nhiên:",
-        "Dark fantasy anime with tragic character arcs and moral ambiguity"
-    )
-    
-    k_recommendations = st.slider("Số lượng đề xuất:", 1, 10, 5)
+    # CONTAINER CHO THANH TÌM KIẾM VÀ SLIDER
+    search_container = st.container()
+    with search_container:
+        col1, col2 = st.columns([4, 1])
+        
+        with col1:
+            user_query = st.text_input(
+                "💬 Nhập mô tả Anime bạn muốn tìm:",
+                "Dark fantasy anime with tragic character arcs and moral ambiguity",
+                placeholder="Ví dụ: Slice of life comedy set in high school with healing atmosphere"
+            )
+        
+        with col2:
+            k_recommendations = st.slider("Số lượng:", 1, 10, 5, help="Chọn số lượng anime bạn muốn được đề xuất.")
 
+    # KHỞI CHẠY TÌM KIẾM
     if user_query:
         start_time = time.time()
         
         # Thực hiện tìm kiếm
-        with st.spinner("Đang tìm kiếm ngữ nghĩa..."):
+        with st.spinner(f"🔍 Đang tìm kiếm ngữ nghĩa cho '{user_query}'..."):
             recommendations = semantic_search(user_query, df, model, index, k_recommendations)
         
         end_time = time.time()
         
-        st.subheader(f"Top {k_recommendations} Đề xuất Anime:")
-        st.write(f"*Tìm kiếm hoàn tất trong {end_time - start_time:.4f} giây.*")
+        st.markdown(f"## Top {k_recommendations} Đề xuất Phù hợp:")
+        st.caption(f"🔎 Tìm kiếm hoàn tất trong {end_time - start_time:.4f} giây.")
         
-        # Hiển thị kết quả
+        # HIỂN THỊ KẾT QUẢ DƯỚI DẠNG CARD
         for i, row in recommendations.iterrows():
-            st.markdown("---")
-            main_title = row.get('Main Title', 'N/A')
-            official_en = row.get('Official Title (en)', 'N/A')
-            max_rating = row.get('Max Rating', 0.0)
-            filter_year = int(row.get('filter_year', 0))
-            animation_work = row.get('Animation Work', 'N/A')
-            synopsis = row.get('Synopsis', 'Không có tóm tắt')
-            tags_content = row.get('Tags', 'Không có thẻ')
-            
-            st.markdown(f"**{main_title}** (Official EN: {official_en})")
-            st.markdown(f"**Rating:** {max_rating:.2f} | **Năm:** {filter_year} | **Studio:** {animation_work}")
-            st.markdown(f"**Tags:** *{tags_content}*")
-            st.markdown(f"**Synopsis:** {synopsis}")
-            st.caption(f"Độ gần (L2 Distance): {row['Distance']:.4f}")
+            # Sử dụng st.container để tạo một "card" có nền và độ nổi bật nhẹ
+            with st.container(border=True):
+                main_title = row.get('Main Title', 'N/A')
+                official_en = row.get('Official Title (en)', 'N/A')
+                max_rating = row.get('Max Rating', 0.0)
+                filter_year = int(row.get('filter_year', 0))
+                animation_work = row.get('Animation Work', 'N/A')
+                synopsis = row.get('Synopsis', 'Không có tóm tắt')
+                tags_content = row.get('Tags', 'Không có thẻ')
+                similarity = 1 - row['Distance']
+
+                col_info, col_rating = st.columns([3, 1])
+                
+                with col_info:
+                    st.markdown(f"### ✨ {main_title} *({official_en})*")
+                    st.markdown(f"**🎬 Studio:** {animation_work} | **📅 Năm:** {filter_year}")
+                    st.markdown(f"**🏷️ Thể loại:** *{tags_content}*")
+                    st.markdown(f"**📖 Tóm tắt:** {synopsis}")
+                
+                with col_rating:
+                    # Hiển thị Rating và Độ Tương đồng bằng st.metric
+                    st.metric(label="⭐ Đánh giá (10)", value=f"{max_rating:.2f}")
+                    st.metric(label="🎯 Độ tương đồng", value=f"{similarity:.4f}")

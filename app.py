@@ -11,7 +11,7 @@ import gdown # Cần thư viện này để tải file từ Google Drive
 # TÊN FILE VÀ FILE ID
 DATA_FILE = 'anime_dataset_small_nomic.parquet'
 # !! QUAN TRỌNG: BẠN PHẢI THAY THẾ ID NÀY BẰNG ID FILE CỦA BẠN TỪ GOOGLE DRIVE !!
-DATA_FILE_ID = 'https://drive.google.com/file/d/16bdNhA2DCgRevE3ZtaQIIym_lSRYVqQO/view?usp=sharing' 
+DATA_FILE_ID = '16bdNhA2DCgRevE3ZtaQIIym_lSRYVqQO' 
 MODEL_NAME = 'nomic-ai/nomic-embed-text-v1.5'
 
 # --- HÀM TẢI FILE NẶNG (SỬ DỤNG CACHE) ---

@@ -41,7 +41,7 @@ def load_data_and_initialize_rag():
             "Synopsis: " + df['Synopsis'].fillna('No synopsis provided')
         )
     except KeyError as e:
-        st.error(f"LỖI KEY: Cột {e} không tồn tại. Vui lòng kiểm tra lại chính tả tên cột.")
+        st.error(f"LỖỖI KEY: Cột {e} không tồn tại. Vui lòng kiểm tra lại chính tả tên cột.")
         return None, None, None
 
     # 4. Tải Mô hình Embedding 
@@ -89,11 +89,12 @@ st.markdown("<h4 style='text-align: center; color: #808080;'>Tìm kiếm Anime b
 
 
 # Sử dụng st.spinner để ẩn các bước kỹ thuật
-with st.spinner("🚀 Đang khởi động hệ thống Đề xuất AI... (Lần đầu sẽ mất vài phút)"):
+with st.spinner("🚀 Đang khởi động hệ thống Đề xuất AI... (Chỉ lần đầu tiên tải sẽ lâu)"):
     df, model, index = load_data_and_initialize_rag()
 
 if df is not None:
-    st.success("✅ Hệ thống đã sẵn sàng! Chào mừng bạn đến với thế giới Anime.")
+    # Thay st.success bằng st.toast để thông báo gọn gàng hơn
+    st.toast("Hệ thống AI đã sẵn sàng!")
     st.markdown("---")
     
     # CONTAINER CHO THANH TÌM KIẾM VÀ SLIDER
@@ -109,7 +110,8 @@ if df is not None:
             )
         
         with col2:
-            k_recommendations = st.slider("Số lượng:", 1, 10, 5, help="Chọn số lượng anime bạn muốn được đề xuất.")
+            # Thay đổi nhãn slider
+            k_recommendations = st.slider("Số lượng đề xuất:", 1, 10, 5, help="Chọn số lượng anime bạn muốn được đề xuất.")
 
     # KHỞI CHẠY TÌM KIẾM
     if user_query:
@@ -121,12 +123,12 @@ if df is not None:
         
         end_time = time.time()
         
+        # Tiêu đề kết quả
         st.markdown(f"## Top {k_recommendations} Đề xuất Phù hợp:")
-        st.caption(f"🔎 Tìm kiếm hoàn tất trong {end_time - start_time:.4f} giây.")
+        st.caption(f"🔎 Hoàn tất tìm kiếm trong {end_time - start_time:.4f} giây.")
         
         # HIỂN THỊ KẾT QUẢ DƯỚI DẠNG CARD
         for i, row in recommendations.iterrows():
-            # Sử dụng st.container để tạo một "card" có nền và độ nổi bật nhẹ
             with st.container(border=True):
                 main_title = row.get('Main Title', 'N/A')
                 official_en = row.get('Official Title (en)', 'N/A')
@@ -135,17 +137,31 @@ if df is not None:
                 animation_work = row.get('Animation Work', 'N/A')
                 synopsis = row.get('Synopsis', 'Không có tóm tắt')
                 tags_content = row.get('Tags', 'Không có thẻ')
-                similarity = 1 - row['Distance']
-
+                
+                # Tính toán lại Similarity Score (Chuyển L2 Distance về điểm từ 0-1)
+                # Max L2 Distance có thể khoảng 2.0. Chuẩn hóa về 0-100%
+                # Dùng np.clip để tránh giá trị âm/lớn vô lý
+                normalized_distance = np.clip(row['Distance'], 0, 1.5) 
+                similarity_percentage = np.clip(100 - (normalized_distance * 100 / 1.5), 0, 100) # Chuẩn hóa dựa trên max distance 1.5
+                
                 col_info, col_rating = st.columns([3, 1])
                 
                 with col_info:
-                    st.markdown(f"### ✨ {main_title} *({official_en})*")
+                    # Tiêu đề chính + Năm sản xuất
+                    st.markdown(f"### 🏆 {main_title} *({official_en})*")
                     st.markdown(f"**🎬 Studio:** {animation_work} | **📅 Năm:** {filter_year}")
-                    st.markdown(f"**🏷️ Thể loại:** *{tags_content}*")
+                    
+                    # Rút gọn Tags nếu quá dài
+                    if len(tags_content) > 150:
+                        display_tags = tags_content[:150] + "..."
+                    else:
+                        display_tags = tags_content
+                    
+                    st.markdown(f"**🏷️ Thể loại chính:** *{display_tags}*")
                     st.markdown(f"**📖 Tóm tắt:** {synopsis}")
                 
                 with col_rating:
                     # Hiển thị Rating và Độ Tương đồng bằng st.metric
                     st.metric(label="⭐ Đánh giá (10)", value=f"{max_rating:.2f}")
-                    st.metric(label="🎯 Độ tương đồng", value=f"{similarity:.4f}")
+                    # Hiển thị độ tương đồng dưới dạng %
+                    st.metric(label="🎯 Độ tương đồng", value=f"{similarity_percentage:.1f}%")
